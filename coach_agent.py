@@ -74,7 +74,7 @@ def build_input(
 
 
 def create_agent() -> Agent:
-    model = os.getenv("OPENAI_MODEL", "gpt-5.6-sol")
+    model = os.getenv("OPENAI_MODEL", "gpt-5.6-luna")
     return Agent(
         name="Problem Solving Coach",
         model=model,
