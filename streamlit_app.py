@@ -25,7 +25,44 @@ def load_cloud_secrets() -> None:
         pass
 
 
+def initialize_session_state() -> None:
+    """Create durable, question-specific storage for the four IS / IS-NOT fields."""
+    if "question_inputs" not in st.session_state:
+        st.session_state["question_inputs"] = {
+            qid: {
+                "is_value": "",
+                "is_not_value": "",
+                "known_difference": "",
+                "context": "",
+            }
+            for qid in QUESTION_SPECS
+        }
+
+    # If a future version adds questions, make sure existing sessions get them too.
+    for qid in QUESTION_SPECS:
+        st.session_state["question_inputs"].setdefault(
+            qid,
+            {
+                "is_value": "",
+                "is_not_value": "",
+                "known_difference": "",
+                "context": "",
+            },
+        )
+
+    if "question_results" not in st.session_state:
+        st.session_state["question_results"] = {}
+
+
+def save_question_field(question_id: int, field_name: str, widget_key: str) -> None:
+    """Persist a widget value outside Streamlit's temporary widget lifecycle."""
+    st.session_state["question_inputs"][question_id][field_name] = st.session_state.get(
+        widget_key, ""
+    )
+
+
 load_cloud_secrets()
+initialize_session_state()
 
 STATUS_LABELS = {
     "known": "✅ Conocido",
@@ -44,7 +81,9 @@ QUALITY_LABELS = {
 
 
 st.title("🧠 Problem Solving Coach")
-st.caption("MVP v0.2 · IS / IS-NOT · El objetivo es mejorar la investigación, no llenar celdas por llenar.")
+st.caption(
+    "MVP v0.3 · IS / IS-NOT · El objetivo es mejorar la investigación, no llenar celdas por llenar."
+)
 
 with st.expander("Principios del coach", expanded=False):
     st.markdown(
@@ -62,57 +101,107 @@ question_options = {
     for qid, spec in QUESTION_SPECS.items()
 }
 
-with st.form("evaluation_form"):
-    selected_label = st.selectbox("Pregunta del formato", list(question_options.keys()))
-    question_id = question_options[selected_label]
-    spec = QUESTION_SPECS[question_id]
+# IMPORTANT: the question selector lives OUTSIDE the evaluation form/button flow.
+# Changing it reruns the page immediately, so the four question-specific fields can
+# load their own saved values.
+selected_label = st.selectbox(
+    "Pregunta del formato",
+    list(question_options.keys()),
+    key="selected_question_label",
+)
+question_id = question_options[selected_label]
+spec = QUESTION_SPECS[question_id]
 
-    st.info(f"**Objetivo metodológico:** {spec['objective']}")
+st.info(f"**Objetivo metodológico:** {spec['objective']}")
 
-    problem_statement = st.text_area(
-        "Problema general",
-        placeholder="Ej. Scrap por altura de conmutador fuera de especificación",
-        height=80,
+# These two fields describe the overall case, so they intentionally remain shared
+# across all 13 questions.
+problem_statement = st.text_area(
+    "Problema general",
+    placeholder="Ej. Scrap por altura de conmutador fuera de especificación",
+    height=80,
+    key="problem_statement",
+)
+defect_mode = st.text_input(
+    "Modo de falla / defecto observado",
+    placeholder="Ej. Altura de conmutador fuera de especificación",
+    key="defect_mode",
+)
+
+st.caption(
+    "Los cuatro campos siguientes son **independientes para cada pregunta**. "
+    "Puedes cambiar de pregunta y volver después sin perder lo escrito."
+)
+
+saved = st.session_state["question_inputs"][question_id]
+
+is_key = f"_q{question_id}_is_value"
+is_not_key = f"_q{question_id}_is_not_value"
+difference_key = f"_q{question_id}_known_difference"
+context_key = f"_q{question_id}_context"
+
+left, right = st.columns(2)
+with left:
+    is_value = st.text_area(
+        "ES",
+        value=saved["is_value"],
+        placeholder="Ej. Inducido 013",
+        height=100,
+        key=is_key,
+        on_change=save_question_field,
+        args=(question_id, "is_value", is_key),
     )
-    defect_mode = st.text_input(
-        "Modo de falla / defecto observado",
-        placeholder="Ej. Altura de conmutador fuera de especificación",
+with right:
+    is_not_value = st.text_area(
+        "NO ES",
+        value=saved["is_not_value"],
+        placeholder="Puedes escribir 'no sé' si aún no existe un contraste confirmado",
+        height=100,
+        key=is_not_key,
+        on_change=save_question_field,
+        args=(question_id, "is_not_value", is_not_key),
     )
 
-    left, right = st.columns(2)
-    with left:
-        is_value = st.text_area(
-            "ES",
-            placeholder="Ej. Inducido 013",
-            height=100,
-        )
-    with right:
-        is_not_value = st.text_area(
-            "NO ES",
-            placeholder="Puedes escribir 'no sé' si aún no existe un contraste confirmado",
-            height=100,
-        )
+known_difference = st.text_area(
+    "Diferencia conocida entre ES y NO ES",
+    value=saved["known_difference"],
+    placeholder="Puede quedar en blanco o escribir 'no sé'. No es obligatorio conocerla todavía.",
+    height=80,
+    key=difference_key,
+    on_change=save_question_field,
+    args=(question_id, "known_difference", difference_key),
+)
+context = st.text_area(
+    "Contexto adicional",
+    value=saved["context"],
+    placeholder="Máquina, turno, PN, proveedor, secuencia, evidencia disponible, información pendiente, etc.",
+    height=130,
+    key=context_key,
+    on_change=save_question_field,
+    args=(question_id, "context", context_key),
+)
 
-    known_difference = st.text_area(
-        "Diferencia conocida entre ES y NO ES",
-        placeholder="Puede quedar en blanco o escribir 'no sé'. No es obligatorio conocerla todavía.",
-        height=80,
-    )
-    context = st.text_area(
-        "Contexto adicional",
-        placeholder="Máquina, turno, PN, proveedor, secuencia, evidencia disponible, información pendiente, etc.",
-        height=130,
-    )
-
-    submitted = st.form_submit_button("✨ Evaluar contraste", use_container_width=True)
+submitted = st.button("✨ Evaluar contraste", use_container_width=True, type="primary")
 
 if submitted:
+    # Save the current visible values immediately as an extra safeguard before the API call.
+    st.session_state["question_inputs"][question_id].update(
+        {
+            "is_value": is_value,
+            "is_not_value": is_not_value,
+            "known_difference": known_difference,
+            "context": context,
+        }
+    )
+
     if not os.getenv("OPENAI_API_KEY"):
         st.error(
             "No encuentro OPENAI_API_KEY. En Streamlit Community Cloud agrégala en App settings → Secrets."
         )
     elif not problem_statement.strip() or not defect_mode.strip() or not is_value.strip():
-        st.warning("Completa al menos Problema general, Modo de falla y ES. NO ES puede ser desconocido.")
+        st.warning(
+            "Completa al menos Problema general, Modo de falla y ES. NO ES puede ser desconocido."
+        )
     else:
         try:
             with st.spinner("La ingeniera virtual está revisando el contraste…"):
@@ -125,24 +214,27 @@ if submitted:
                     known_difference=known_difference.strip(),
                     context=context.strip(),
                 )
-            st.session_state["last_result"] = result
-            st.session_state["last_question"] = selected_label
+            st.session_state["question_results"][question_id] = result
         except Exception as exc:
             st.error("No pude completar la evaluación.")
             with st.expander("Detalle técnico para diagnóstico"):
                 st.code(f"{type(exc).__name__}: {exc}")
 
-result = st.session_state.get("last_result")
+# Each question keeps its own latest AI evaluation too.
+result = st.session_state["question_results"].get(question_id)
 if result is not None:
     st.divider()
     st.subheader("Evaluación del coach")
-    st.caption(st.session_state.get("last_question", ""))
+    st.caption(selected_label)
 
     c1, c2 = st.columns(2)
     with c1:
         st.metric("Estado de la información", STATUS_LABELS.get(result.status, result.status))
     with c2:
-        st.metric("Calidad del contraste", QUALITY_LABELS.get(result.contrast_quality, result.contrast_quality))
+        st.metric(
+            "Calidad del contraste",
+            QUALITY_LABELS.get(result.contrast_quality, result.contrast_quality),
+        )
 
     st.markdown("### Lo que sabemos")
     st.write(result.answer_summary)
@@ -179,3 +271,6 @@ if result is not None:
         st.warning(result.methodological_warning)
 
     st.caption(f"Límite causal: {result.causal_boundary_note}")
+
+st.divider()
+st.caption(f"Modelo configurado: {os.getenv('OPENAI_MODEL', 'gpt-5.6-luna')}")
