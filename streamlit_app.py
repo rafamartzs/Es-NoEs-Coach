@@ -145,7 +145,7 @@ with left:
     is_value = st.text_area(
         "ES",
         value=saved["is_value"],
-        placeholder="Ej. Inducido 013",
+        placeholder="Ej. Inducido 098",
         height=100,
         key=is_key,
         on_change=save_question_field,
@@ -204,7 +204,7 @@ if submitted:
         )
     else:
         try:
-            with st.spinner("La ingeniera virtual está revisando el contraste…"):
+            with st.spinner("El coach virtual está revisando el contraste…"):
                 result = evaluate_case(
                     question_id=question_id,
                     problem_statement=problem_statement.strip(),
