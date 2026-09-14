@@ -1,10 +1,15 @@
 import json
 import os
 
-from agents import Agent, Runner
+from agents import Agent, Runner, set_tracing_disabled
 
 from question_specs import QUESTION_SPECS
 from schemas import EvaluationResult
+
+
+# For the MVP we disable SDK tracing. The application still calls the model normally,
+# but it does not create a separate Agents SDK trace for each evaluation.
+set_tracing_disabled(True)
 
 
 CONSTITUTION = """
@@ -27,6 +32,7 @@ GLOBAL RULES
 13. If a reproducible temporal or sequential transition exists, prioritize comparisons around that transition.
 14. Do not perform root-cause analysis yet. Do not declare a cause.
 15. Ask one best next question, not a long questionnaire.
+16. Write all user-facing text in the same language used by the engineer in the case data.
 
 STATUS MEANINGS
 - known: supported by factual evidence available now.
@@ -74,6 +80,10 @@ def create_agent() -> Agent:
         model=model,
         instructions=CONSTITUTION,
         output_type=EvaluationResult,
+        model_settings={
+            "reasoning": {"effort": "medium"},
+            "verbosity": "low",
+        },
     )
 
 
